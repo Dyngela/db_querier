@@ -1,7 +1,7 @@
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use dotenvy::dotenv;
-use sqlx::{Execute, Pool, Postgres};
+use sqlx::{Pool, Postgres};
 
 #[derive(Debug)]
 struct Table {
@@ -32,18 +32,17 @@ async fn main() -> anyhow::Result<()> {
         table.fields = find_table_attributes(&pool, table.name.clone()).await
     }
     
-    find_primary_and_foreign_key(&pool, &tables);
-    println!("{:#?}", tables);
+    find_primary_and_foreign_key(&pool, &mut tables).await;
+    // println!("{:#?}", tables);
 
 
     Ok(())
 }
 
-async fn find_primary_and_foreign_key(pool: &sqlx::PgPool, tables: &Vec<Table>) {
+async fn find_primary_and_foreign_key(pool: &sqlx::PgPool, tables: &mut Vec<Table>) {
     let res = sqlx::query!(
         r#"
             SELECT conrelid::regclass::varchar AS table_name,
-                   conname AS key,
                    pg_get_constraintdef(oid)
             FROM   pg_constraint
             WHERE  contype = 'f' or contype = 'p'
@@ -51,28 +50,36 @@ async fn find_primary_and_foreign_key(pool: &sqlx::PgPool, tables: &Vec<Table>) 
             ORDER  BY conrelid::regclass::text, contype DESC
         "#
     ).fetch_all(pool).await.expect("Fail to fetch foreign and primary key");
+
+
+
     for r in res {
-        for t in tables {
+        for t in &mut *tables {
             if t.name == r.table_name.clone() .expect("No value for table while getting PK and FK"){
-                // extract field name which is a key for primary key
-                // extract field name and table ref for foreign key
-                // set it into the right field looping over
-                // done.
+                match r.pg_get_constraintdef {
+                    Some(v) => {
+                        if v.contains("PRIMARY KEY") {
+                            let name_parse: &str = &v[13..v.len() -1];
+                            for mut field in &mut t.fields {
+                                if field.name == name_parse.to_string() {
+                                    field.is_primary_key = true;
+                                }
+                            }
+                        } else if v.contains("FOREIGN KEY") {
+                            let foreign_key_name: &str = &v[13..')'];
+                            println!("{}", foreign_key_name)
+                        }
+                    },
+                    None => ()
+                }
                 break;
             }
         }
     }
 }
 
-fn parse_primary_key(text: String) -> String {
-
-
-
-    return "".to_string();
-}
-
-fn parse_foreign_key(text: String) -> (String, String) {
-
+fn parse_foreign_key(text: String, t: &Table) {
+    // let table_referenced: &str
 }
 
 async fn find_all_tables(pool: &sqlx::PgPool) -> Vec<Table> {
@@ -115,34 +122,34 @@ async fn find_table_attributes(pool: &sqlx::PgPool, table: String) -> Vec<Field>
     return fields;
 }
 
-struct Search {
-    id: i64,
-    username: Option<String>,
-    min_age: Option<i8>,
-    max_age: Option<i8>,
-}
-
-fn search_query(search: Search) -> String {
-    let mut query = sqlx::QueryBuilder::new("SELECT * from users where id = ");
-    query.push_bind(search.id);
-
-    if let Some(username) = search.username {
-        query.push(" AND username = ");
-        query.push_bind(username);
-    }
-
-    if let Some(min_age) = search.min_age {
-        query.push(" AND age > ");
-        query.push_bind(min_age);
-    }
-
-    if let Some(max_age) = search.max_age {
-        query.push(" AND age < ");
-        query.push_bind(max_age);
-    }
-
-    query.build().sql().into()
-}
+// struct Search {
+//     id: i64,
+//     username: Option<String>,
+//     min_age: Option<i8>,
+//     max_age: Option<i8>,
+// }
+//
+// fn search_query(search: Search) -> String {
+//     let mut query = sqlx::QueryBuilder::new("SELECT * from users where id = ");
+//     query.push_bind(search.id);
+//
+//     if let Some(username) = search.username {
+//         query.push(" AND username = ");
+//         query.push_bind(username);
+//     }
+//
+//     if let Some(min_age) = search.min_age {
+//         query.push(" AND age > ");
+//         query.push_bind(min_age);
+//     }
+//
+//     if let Some(max_age) = search.max_age {
+//         query.push(" AND age < ");
+//         query.push_bind(max_age);
+//     }
+//
+//     query.build().sql().into()
+// }
 
 // fn main() {
 //     dbg!(search_query(Search {
